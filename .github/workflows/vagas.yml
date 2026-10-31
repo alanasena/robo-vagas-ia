@@ -2,7 +2,7 @@ name: Vagas Junior
 
 on:
   schedule:
-    - cron: "17 * * * *"  # de hora em hora, no minuto 17
+        - cron: "7,37 * * * *"  # duas vezes por hora (o GitHub às vezes pula rodadas)
   workflow_dispatch:       # botão para rodar na mão
 
 permissions:
