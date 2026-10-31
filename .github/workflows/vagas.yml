@@ -1,0 +1,59 @@
+name: Vagas Junior
+
+on:
+  schedule:
+    - cron: "17 * * * *"  # de hora em hora, no minuto 17
+  workflow_dispatch:       # botão para rodar na mão
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vagas
+  cancel-in-progress: false
+
+jobs:
+  buscar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python vagas.py
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WHATSAPP_NUMERO: ${{ secrets.WHATSAPP_NUMERO }}
+          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+      - name: Salvar vagas já vistas
+        run: |
+          git config user.name "robo-vagas"
+          git config user.email "robo-vagas@users.noreply.github.com"
+          cp vistas.json "$RUNNER_TEMP/minhas.json"
+          # Se outra rodada (ou você) mudou o repositório nesse meio tempo,
+          # pega a versão mais nova e junta as duas listas de vagas vistas.
+          for tentativa in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+            python - <<'EOF'
+          import json, os
+          minhas = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "minhas.json")))
+          try:
+              remotas = json.load(open("vistas.json"))
+          except Exception:
+              remotas = []
+          json.dump(sorted(set(minhas) | set(remotas)), open("vistas.json", "w"))
+          EOF
+            git add vistas.json
+            if git diff --staged --quiet; then exit 0; fi
+            git commit -m "atualiza vagas vistas"
+            if git push; then exit 0; fi
+            echo "Push recusado, tentando de novo ($tentativa)..."
+            sleep 5
+          done
+          exit 1
