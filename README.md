@@ -1,6 +1,6 @@
 # 🤖 Robo-vagas: caçador de vagas júnior com IA
 
-Um robô que roda sozinho no GitHub Actions, de hora em hora. Ele busca vagas júnior de tecnologia em 5 fontes do Brasil, descarta o que não serve e **usa um LLM (Google Gemini) para dar uma nota de 0 a 10** de compatibilidade entre cada vaga e o meu perfil. As vagas chegam por e-mail e WhatsApp, da melhor para a pior.
+Um robô que roda sozinho no GitHub Actions, de hora em hora. Ele busca vagas júnior de tecnologia em 5 fontes do Brasil, descarta o que não serve e **usa um LLM (Google Gemini) para dar uma nota de 1 a 10** de compatibilidade entre cada vaga e o meu perfil. As vagas chegam por e-mail e WhatsApp, da melhor para a pior.
 
 Criei para resolver um problema meu: eu passava horas por dia abrindo vagas que não tinham nada a ver comigo. Agora eu abro só as que têm nota alta.
 
@@ -25,15 +25,17 @@ flowchart LR
    - remotas sempre; híbridas e presenciais só no Ceará, a partir de uma data
 3. **"Talvez"**: vagas que passam nos filtros, mas têm um ponto de dúvida (pede para morar em outra cidade, horário noturno, vaga em inglês, "qualidade" que pode não ser de software). Vão numa seção separada, com o motivo.
 4. **Limpeza**: remove repetidas (mesma empresa e mesmo título em sites diferentes) e confere se a vaga ainda está aberta, inclusive em Greenhouse, Lever e Ashby.
-5. **Avaliação com IA** (`ia.py`): o modelo lê a vaga e o meu `perfil.md` e devolve um JSON com formato fixo (*structured output*):
+5. **Avaliação com IA** (`ia.py` + `prompt.md`): o prompt traz meu perfil, 8 regras eliminatórias (CLT, remoto, júnior, inglês, turno etc.) e uma pontuação por área, tecnologias, básicos e bônus. O modelo devolve um JSON com formato fixo (*structured output*):
    ```json
-   { "nota": 8, "resumo": "...", "combina": ["React", "Python"], "falta": ["Docker"], "alerta": "" }
+   { "nota": 8, "eliminada": false, "motivos_eliminacao": [], "pontos_fortes": ["React e TypeScript"],
+     "pontos_fracos": ["Pede Docker"], "alertas": ["Não diz o tipo de contrato"], "resumo": "..." }
    ```
 6. **Envio**: um e-mail com as vagas "certas" e as "talvez", cada grupo ordenado pela nota, e um resumo no WhatsApp.
 7. **Memória**: os IDs já vistos ficam em `vistas.json`, commitado pelo próprio robô, com tratamento de conflito quando duas rodadas rodam juntas.
 
 ## Decisões técnicas
 - **Regras primeiro, IA depois**: os filtros baratos descartam centenas de vagas; a IA só avalia as poucas que sobram.
+- **Rubrica explícita**: a nota segue critérios escritos no `prompt.md`, e o código garante a regra "eliminada vale no máximo 3" mesmo se o modelo errar.
 - **Structured output** com `responseSchema`: a IA sempre devolve JSON válido.
 - **Proteção contra prompt injection**: a descrição da vaga vai delimitada e o modelo é instruído a tratá-la só como dado.
 - **Funciona sem IA**: se a chave faltar ou a API falhar, as vagas chegam do mesmo jeito, só que sem nota.
@@ -45,7 +47,7 @@ flowchart LR
 Python 3.12 · Requests · Regex · Google Gemini API · GitHub Actions (cron) · SMTP/Gmail · CallMeBot (WhatsApp)
 
 ## Como usar no seu GitHub
-1. Faça um fork e edite o `perfil.md` com o seu perfil.
+1. Faça um fork e edite o `prompt.md` com o seu perfil e as suas regras.
 2. Gere uma chave grátis no [Google AI Studio](https://aistudio.google.com/apikey).
 3. Em **Settings → Secrets and variables → Actions**, crie:
    - `GEMINI_API_KEY`: chave do Gemini

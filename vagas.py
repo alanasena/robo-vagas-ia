@@ -590,15 +590,18 @@ def bloco_ia(ia):
     if not ia:
         return ""
     cor = "#15803d" if ia["nota"] >= 7 else "#b45309" if ia["nota"] >= 4 else "#b91c1c"
-    lista = lambda itens: ", ".join(html.escape(x) for x in itens[:3]) or "—"
-    alerta = f'<p style="margin:2px 0">🚩 {html.escape(ia["alerta"])}</p>' if ia.get("alerta") else ""
+    lista = lambda itens: ", ".join(html.escape(x) for x in itens[:3])
+    linha = lambda icone, rotulo, itens: (f'<p style="margin:2px 0">{icone} <b>{rotulo}:</b> {lista(itens)}</p>'
+                                          if itens else "")
+    titulo = f"🤖 Nota {ia['nota']}/10" + (" — ❌ eliminada" if ia.get("eliminada") else "")
     return f"""
       <div style="background:#f8fafc;border-left:4px solid {cor};padding:8px;margin-bottom:8px">
-        <p style="margin:0;font-size:18px;color:{cor}"><b>🤖 Nota {ia['nota']}/10</b></p>
+        <p style="margin:0;font-size:18px;color:{cor}"><b>{titulo}</b></p>
         <p style="margin:2px 0">{html.escape(ia['resumo'])}</p>
-        <p style="margin:2px 0">✅ <b>Combina:</b> {lista(ia['combina'])}</p>
-        <p style="margin:2px 0">📚 <b>Falta:</b> {lista(ia['falta'])}</p>
-        {alerta}
+        {linha("❌", "Eliminada por", ia.get("motivos_eliminacao", []))}
+        {linha("✅", "Combina", ia.get("pontos_fortes", []))}
+        {linha("📚", "Falta", ia.get("pontos_fracos", []))}
+        {linha("🚩", "Atenção", ia.get("alertas", []))}
       </div>"""
 
 
@@ -643,7 +646,8 @@ def enviar_whatsapp(vagas, n_talvez=0):
     for i in range(0, len(vagas), 5):
         partes = [f"🔔 *{len(vagas)} vaga(s) júnior nova(s)*"] if i == 0 else []
         for v in vagas[i:i + 5]:
-            nota = f"🤖 Nota {v['ia']['nota']}/10\n" if v.get("ia") else ""
+            nota = (f"🤖 Nota {v['ia']['nota']}/10" + (" ❌ eliminada" if v["ia"].get("eliminada") else "") + "\n"
+                    if v.get("ia") else "")
             partes.append(
                 f"\n{nota}*{v['cargo']}*\n{v['empresa']}\n"
                 f"{v['modalidade']} · {v['contrato']}"
