@@ -3,7 +3,7 @@
 Fontes:
 - Gupy: página oficial de carreiras da empresa (diz se é CLT, PJ, estágio)
 - Comunidades de vagas no GitHub: frontendbr, backend-br, react-brasil, qa-brasil
-Remotas sempre. Híbridas/presenciais no Ceará só a partir de DATA_CEARA.
+Remotas sempre. Híbridas/presenciais só no Nordeste, a partir de DATA_NORDESTE.
 Só envia e-mail quando há vaga nova. Guarda as já vistas em vistas.json.
 Cada vaga nova recebe uma nota de compatibilidade dada por IA (ver ia.py).
 """
@@ -23,8 +23,12 @@ from ia import avaliar, ordenar
 
 ARQ_VISTAS = "vistas.json"
 MAX_DIAS = 7
-# A partir desta data também entram vagas híbridas/presenciais no Ceará
-DATA_CEARA = datetime(2026, 12, 1, tzinfo=timezone.utc)
+# A partir desta data também entram vagas híbridas/presenciais no Nordeste
+DATA_NORDESTE = datetime(2026, 11, 5, tzinfo=timezone.utc)
+# Estados, capitais e siglas do Nordeste (para vagas híbridas/presenciais)
+NORDESTE_NOMES = re.compile(r"\b(nordeste|alagoas|bahia|ceara|maranhao|paraiba|pernambuco|piaui|rio grande do norte|"
+                            r"sergipe|maceio|salvador|fortaleza|sao luis|joao pessoa|recife|teresina|natal|aracaju)\b")
+NORDESTE_UF = {"al", "ba", "ce", "ma", "pb", "pe", "pi", "rn", "se"}
 UA = {"User-Agent": "Mozilla/5.0 (robo-vagas-junior)"}
 
 REPOS_GITHUB = ["frontendbr/vagas", "backend-br/vagas", "react-brasil/vagas", "qa-brasil/vagas"]
@@ -83,6 +87,15 @@ def norm(txt):
     txt = unicodedata.normalize("NFKD", txt or "")
     txt = "".join(c for c in txt if not unicodedata.combining(c))
     return re.sub(r"[^a-z0-9 +#.-]", " ", txt.lower()).strip()
+
+
+def no_nordeste(texto, com_sigla=False):
+    """True se o texto fala de um lugar do Nordeste. com_sigla=True também aceita "CE", "PE"...
+    (só para campos de cidade/estado, onde a sigla não se confunde com outra palavra)."""
+    t = norm(texto)
+    if NORDESTE_NOMES.search(t):
+        return True
+    return com_sigla and any(p in NORDESTE_UF for p in re.findall(r"[a-z]+", t))
 
 
 def limpar(txt, descricao=False):
@@ -195,7 +208,7 @@ def gupy():
                     "publicada": data(_pega(j, "publishedDate", "publishedAt", "createdAt")),
                     "prazo": data(_pega(j, "applicationDeadline", "deadline")),
                     "modalidade": modelo, "local": cidade,
-                    "no_ceara": "ceara" in norm(cidade) or "fortaleza" in norm(cidade),
+                    "no_nordeste": no_nordeste(cidade, com_sigla=True),
                     "exterior": False,
                     "contrato": GUPY_TIPOS.get(tipo, "Não informado"),
                     "descricao": limpar(_pega(j, "description") or "", descricao=True),
@@ -270,8 +283,8 @@ def github_vagas(agora):
                 "cargo": titulo, "url": i.get("html_url"),
                 "publicada": data(i.get("created_at")), "prazo": None,
                 "modalidade": modelo,
-                "local": "Ceará" if tem("ceara") else "",
-                "no_ceara": tem("ceara") or "fortaleza" in t or "ceara" in t,
+                "local": next((l["name"] for l in i.get("labels", []) if no_nordeste(l["name"])), ""),
+                "no_nordeste": any(no_nordeste(e) for e in etiquetas) or no_nordeste(titulo),
                 "exterior": tem("exterior", "fora-do-pais", "fora do pais"),
                 "contrato": contrato, "descricao": limpar(corpo, descricao=True),
                 "junior_etiqueta": tem("junior"), "avisos": avisos,
@@ -341,7 +354,7 @@ def solides():
                     "cargo": (j.get("title") or "?").strip(), "url": url,
                     "publicada": data(j.get("createdAt")), "prazo": None,
                     "modalidade": modelo, "local": cidade,
-                    "no_ceara": (j.get("state") or {}).get("code") == "CE",
+                    "no_nordeste": norm((j.get("state") or {}).get("code", "")) in NORDESTE_UF,
                     "exterior": False, "contrato": contrato,
                     "descricao": limpar(j.get("description", ""), descricao=True),
                     "junior_etiqueta": "junior" in niveis,
@@ -381,7 +394,7 @@ def remotar():
                     "cargo": (j.get("title") or "?").strip(), "url": url,
                     "publicada": data(j.get("createdAt")), "prazo": data(j.get("expiresAt")),
                     "modalidade": "Remoto", "local": "Brasil",
-                    "no_ceara": False, "exterior": False,
+                    "no_nordeste": False, "exterior": False,
                     "contrato": contrato_pelo_texto(desc), "descricao": desc,
                     "junior_etiqueta": False, "avisos": [],
                     "ja_confirmada": not j.get("isExternalLink"),  # link externo: confere se ainda existe
@@ -432,7 +445,7 @@ def programathor():
                 "url": "https://programathor.com.br" + link,
                 "publicada": None, "prazo": None,
                 "modalidade": modelo, "local": local,
-                "no_ceara": "ceara" in ln or "fortaleza" in ln,
+                "no_nordeste": no_nordeste(local, com_sigla=True),
                 "exterior": False, "contrato": campo("fa-file-alt") or "Não informado",
                 "descricao": "", "junior_etiqueta": "junior" in norm(campo("fa-chart-bar")),
                 "avisos": [], "ja_confirmada": True,
@@ -487,7 +500,7 @@ def classificar(v):
     if "qualidade" in t and not QUALIDADE_SOFT.search(t):
         motivos.append("“Qualidade” pode não ser de software")
     m = RESIDIR.search(d)
-    if m and "ceara" not in m.group(0) and "fortaleza" not in m.group(0):
+    if m and not no_nordeste(m.group(0)):
         motivos.append(f"Pede para morar em: “{m.group(3).strip()[:40]}”")
     if v["modalidade"] == "Não informado":
         motivos.append("Não diz se é remota, híbrida ou presencial")
@@ -510,7 +523,7 @@ def modalidade_ok(v, agora):
         return False
     if v["modalidade"] in ("Remoto", "Flexível", "Não informado"):
         return True
-    return v["no_ceara"] and agora >= DATA_CEARA
+    return v["no_nordeste"] and agora >= DATA_NORDESTE
 
 
 def aberta_no_ats(url):
@@ -590,7 +603,7 @@ def bloco_ia(ia):
     if not ia:
         return ""
     cor = "#15803d" if ia["nota"] >= 7 else "#b45309" if ia["nota"] >= 4 else "#b91c1c"
-    lista = lambda itens: ", ".join(html.escape(x) for x in itens[:3])
+    lista = lambda itens: "; ".join(html.escape(x.strip().rstrip(".")) for x in itens[:3])
     linha = lambda icone, rotulo, itens: (f'<p style="margin:2px 0">{icone} <b>{rotulo}:</b> {lista(itens)}</p>'
                                           if itens else "")
     titulo = f"🤖 Nota {ia['nota']}/10" + (" — ❌ eliminada" if ia.get("eliminada") else "")
@@ -602,6 +615,7 @@ def bloco_ia(ia):
         {linha("✅", "Combina", ia.get("pontos_fortes", []))}
         {linha("📚", "Falta", ia.get("pontos_fracos", []))}
         {linha("🚩", "Atenção", ia.get("alertas", []))}
+        {f'<p style="margin:2px 0;color:#666;font-size:12px">Cálculo: {html.escape(ia["calculo"])}</p>' if ia.get("calculo") else ""}
       </div>"""
 
 
@@ -689,8 +703,8 @@ def main():
             vistas.add(chave)
             continue
         if not modalidade_ok(v, agora):
-            # vaga do Ceará antes da data: não marca como vista, pode entrar depois
-            if not (v["no_ceara"] and not v["exterior"]):
+            # vaga do Nordeste antes da data: não marca como vista, pode entrar depois
+            if not (v["no_nordeste"] and not v["exterior"]):
                 vistas.add(chave)
             else:
                 adiadas += 1
@@ -716,7 +730,7 @@ def main():
             certas.append(v)
 
     print(f"{len(todas)} vagas lidas, {len(certas)} novas, {len(talvez)} no Talvez, "
-          f"{adiadas} do Ceará guardadas para depois")
+          f"{adiadas} do Nordeste guardadas para depois")
     if descartes:
         print("Descartadas:", ", ".join(f"{k}: {n}" for k, n in sorted(descartes.items(), key=lambda x: -x[1])))
     if certas or talvez:
