@@ -22,7 +22,10 @@ import requests
 from ia import avaliar, ordenar
 
 ARQ_VISTAS = "vistas.json"
-MAX_DIAS = 7
+ARQ_RESUMO = "resumo.json"
+HORA_RESUMO = 21  # depois desta hora (Brasília) manda o resumo do dia por e-mail
+FUSO_BRASIL = timezone(timedelta(hours=-3))
+MAX_DIAS = 14  # vagas publicadas há até 14 dias
 # A partir desta data também entram vagas híbridas/presenciais no Nordeste
 DATA_NORDESTE = datetime(2026, 11, 5, tzinfo=timezone.utc)
 # Estados, capitais e siglas do Nordeste (para vagas híbridas/presenciais)
@@ -37,6 +40,15 @@ JUNIOR = re.compile(r"\b(junior|jr\.?|trainee|recem[- ]formad\w*|entry[- ]level)
 # Nível acima de júnior: sai mesmo que o título também diga "júnior" (ex.: "Jr/Pl")
 SENIOR = re.compile(r"\b(senior|sr\.?|pleno|pl|lead|principal|staff|especialista|tech lead|gerente|coordenador\w*|ii|iii)\b")
 PJ_TITULO = re.compile(r"\bpj\b")
+# "Analista I", "Desenvolvedor 1": primeiro nível, conta como júnior
+NIVEL_I = re.compile(r"\b(analista|desenvolvedor\w*|programador\w*|engenheir\w*|tester|qa)\s+(de \w+\s+)?(i|1)\b")
+# Sinais de júnior na descrição, para títulos que não dizem o nível
+JUNIOR_DESC = re.compile(r"(\bjunior\b|\bjr\b|inicio de carreira|comeco de carreira|recem[- ]formad\w*|primeiro emprego|"
+                         r"sem experiencia|nao (e necessari\w|exigimos|precisa ter) experiencia|"
+                         r"(0|zero|1|um) a (1|2|dois) anos? de experiencia|ate (1|2|um|dois) anos? de experiencia|entry[- ]level)")
+# Sinais de nível acima na descrição
+SENIOR_DESC = re.compile(r"(\b(nivel|vaga|posicao|cargo) (pleno|senior)\b|experiencia (minima |comprovada )?de ([3-9]|tres|quatro|cinco) anos|"
+                         r"([3-9]|tres|quatro|cinco)\+? anos de experiencia)")
 # Áreas que a Alana não quer
 AREAS_FORA = re.compile(r"(infraestrutura|\binfra\b|seguranca|governanca|cloud|suporte|help ?desk|service ?desk|\bios\b|swift|devops|\bsre\b|\bredes\b)")
 # Vagas em espanhol
@@ -44,7 +56,7 @@ ESPANHOL_TITULO = re.compile(r"\b(soporte|datos|desarrollador\w*|ingenier[oa]|em
 # Áreas que não são tecnologia
 NAO_TECH = re.compile(r"(redes sociais|social media|\brh\b|recursos humanos|recrutamento|selecao|departamento pessoal|\bdp\b|people|talent|gente e gest|treinamento|comercial|vendas|vendedor|marketing|financeir|contabil|fiscal|juridic|advogad|administrativ|logistic|compras|faturamento|cobranca|telemarketing|atendente|recepc|secretari|enfermag|medic|farmac|laborat|producao|industrial)")
 # Precisa ter pelo menos uma destas no título
-AREA_DELA = re.compile(r"(desenvolvedor\w*|\bdev\b|developer|software|front[- ]?end|\bfront\b|back[- ]?end|\bback\b|full[- ]?stack|\bqa\b|quality assurance|\btestes?\b|tester|qualidade|\bux\b|ui ?/ ?ux|\bdados\b|\bdata\b)")
+AREA_DELA = re.compile(r"(desenvolvedor\w*|programador\w*|analista de sistemas|\bsistemas\b|\bdev\b|developer|software|front[- ]?end|\bfront\b|back[- ]?end|\bback\b|full[- ]?stack|\bqa\b|quality assurance|\btestes?\b|tester|qualidade|\bux\b|ui ?/ ?ux|\bdados\b|\bdata\b)")
 # "Qualidade" sozinha pode ser de fábrica/laboratório: vai para o Talvez
 QUALIDADE_SOFT = re.compile(r"(software|\bqa\b|\btestes?\b|tester|sistemas|\bti\b|tecnologia)")
 # Vagas exclusivas para pessoas com deficiência (as "também para PcD" continuam entrando)
@@ -179,10 +191,16 @@ def _pega(j, *chaves):
     return None
 
 
+# Na Gupy, busca pelo nível E pela área (muita vaga júnior não diz "júnior" no título)
+GUPY_TERMOS = ["junior", "júnior", "jr", "trainee", "desenvolvedor", "desenvolvedora", "programador",
+               "analista de sistemas", "front-end", "back-end", "full stack", "analista de testes", "qa",
+               "analista de dados", "ux"]
+
+
 def gupy():
     global _gupy_campos_mostrados
     vagas = []
-    for termo in ["junior", "júnior", "jr", "trainee"]:
+    for termo in GUPY_TERMOS:
         offset = 0
         while offset < 300:
             itens, limite = gupy_pagina(termo, offset)
@@ -471,8 +489,11 @@ def classificar(v):
         return "fora", "nível pleno/sênior"
     if "banco de talentos" in t:
         return "fora", "banco de talentos"
-    if not (v["junior_etiqueta"] or JUNIOR.search(t)):
-        return "fora", "não é júnior"
+    sem_nivel_no_titulo = not (v["junior_etiqueta"] or JUNIOR.search(t) or NIVEL_I.search(t))
+    if sem_nivel_no_titulo:
+        # o título não diz o nível: decide pela descrição
+        if SENIOR_DESC.search(d) and not JUNIOR_DESC.search(d):
+            return "fora", "nível pleno/sênior (pela descrição)"
     if v["contrato"] == "PJ" or PJ_TITULO.search(t):
         return "fora", "PJ"
     if v.get("so_pcd") or (SO_PCD.search(t) and not TAMBEM_PCD.search(t)):
@@ -513,6 +534,8 @@ def classificar(v):
         motivos.append("Fala em horário noturno")
     if ESPANHOL_DESC.search(d):
         motivos.append("Pede espanhol")
+    if sem_nivel_no_titulo and not JUNIOR_DESC.search(d):
+        motivos.append("Não diz o nível (júnior ou pleno) — confira")
     if motivos:
         return "talvez", "; ".join(motivos)
     return "ok", None
@@ -681,6 +704,85 @@ def enviar_whatsapp(vagas, n_talvez=0):
             print("WhatsApp falhou:", e)
 
 
+# ---------- resumo diário ----------
+NOMES_FONTES = {"gupy": "Gupy", "solides": "Sólides", "remotar": "Remotar", "programathor": "Programathor",
+                **{r: f"Comunidade {r.split('/')[0]}" for r in REPOS_GITHUB}}
+
+
+def resumo_vazio(agora):
+    return {"inicio": agora.isoformat(), "ultimo_envio": None, "rodadas": 0, "enviadas": 0, "talvez": 0,
+            "descartadas": {}, "lidas_max": {}, "vazias": {}}
+
+
+def carregar_resumo(agora):
+    try:
+        with open(ARQ_RESUMO, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return resumo_vazio(agora)
+
+
+def somar_rodada(r, todas, certas, talvez, descartes):
+    r["rodadas"] += 1
+    r["enviadas"] += len(certas)
+    r["talvez"] += len(talvez)
+    for motivo, n in descartes.items():
+        r["descartadas"][motivo] = r["descartadas"].get(motivo, 0) + n
+    por_fonte = {}
+    for v in todas:
+        por_fonte[v["fonte"]] = por_fonte.get(v["fonte"], 0) + 1
+    for fonte in NOMES_FONTES:
+        n = por_fonte.get(fonte, 0)
+        r["lidas_max"][fonte] = max(r["lidas_max"].get(fonte, 0), n)
+        if n == 0:  # a fonte não trouxe nada: pode ter saído do ar ou mudado
+            r["vazias"][fonte] = r["vazias"].get(fonte, 0) + 1
+
+
+def enviar_resumo(r, agora):
+    inicio = datetime.fromisoformat(r["inicio"]).astimezone(FUSO_BRASIL)
+    fim = agora.astimezone(FUSO_BRASIL)
+    linha = lambda rotulo, valor: f"<tr><td style='padding:3px 12px 3px 0'>{rotulo}</td><td><b>{valor}</b></td></tr>"
+    desc = "".join(linha(html.escape(m), n) for m, n in sorted(r["descartadas"].items(), key=lambda x: -x[1])) \
+        or linha("Nenhuma", "")
+    fontes = "".join(linha(html.escape(NOMES_FONTES[f]), r["lidas_max"].get(f, 0)) for f in NOMES_FONTES)
+    problemas = [f"{NOMES_FONTES[f]} veio vazia em {n} de {r['rodadas']} rodadas"
+                 for f, n in r["vazias"].items() if r["rodadas"] and n == r["rodadas"]]
+    alerta = ("<p style='color:#b91c1c'>⚠️ <b>Atenção:</b> " + "; ".join(html.escape(p) for p in problemas)
+              + ". Se for a Gupy, a Sólides ou a Remotar, o site pode ter mudado; numa comunidade pequena, pode só não ter tido vaga.</p>") if problemas else "<p>✅ Todas as fontes funcionaram.</p>"
+    corpo = f"""<div style='font-family:sans-serif;max-width:640px'>
+      <h2>📊 Resumo do robô de vagas</h2>
+      <p style='color:#666'>De {inicio:%d/%m %H:%M} até {fim:%d/%m %H:%M}</p>
+      <table>{linha("Rodadas", r["rodadas"])}{linha("Vagas novas enviadas", r["enviadas"])}{linha("No Talvez", r["talvez"])}</table>
+      <h3>Descartadas pelos filtros</h3><table>{desc}</table>
+      <h3>Vagas lidas por fonte (maior número numa rodada)</h3><table>{fontes}</table>
+      {alerta}</div>"""
+    user = os.environ["GMAIL_USER"]
+    destino = os.environ.get("EMAIL_DESTINO") or user
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"📊 Resumo do dia — robô de vagas ({fim:%d/%m}): {r['enviadas']} enviada(s)"
+    msg["From"], msg["To"] = user, destino
+    msg.attach(MIMEText(corpo, "html", "utf-8"))
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+        s.login(user, os.environ["GMAIL_APP_PASSWORD"])
+        s.sendmail(user, [destino], msg.as_string())
+
+
+def atualizar_resumo(agora, todas, certas, talvez, descartes):
+    r = carregar_resumo(agora)
+    somar_rodada(r, todas, certas, talvez, descartes)
+    hoje = agora.astimezone(FUSO_BRASIL)
+    if hoje.hour >= HORA_RESUMO and r.get("ultimo_envio") != hoje.date().isoformat():
+        try:
+            enviar_resumo(r, agora)
+            print("Resumo do dia enviado")
+            r = resumo_vazio(agora)
+            r["ultimo_envio"] = hoje.date().isoformat()
+        except Exception as e:
+            print("Resumo do dia falhou:", e)  # tenta de novo na próxima rodada
+    with open(ARQ_RESUMO, "w", encoding="utf-8") as f:
+        json.dump(r, f, ensure_ascii=False)
+
+
 # ---------- principal ----------
 def main():
     agora = datetime.now(timezone.utc)
@@ -739,6 +841,7 @@ def main():
         enviar(certas, talvez)
         enviar_whatsapp(certas, len(talvez))
     json.dump(sorted(vistas), open(ARQ_VISTAS, "w"))
+    atualizar_resumo(agora, todas, certas, talvez, descartes)
 
 
 if __name__ == "__main__":
