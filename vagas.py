@@ -3,7 +3,7 @@
 Fontes:
 - Gupy: página oficial de carreiras da empresa (diz se é CLT, PJ, estágio)
 - Comunidades de vagas no GitHub: frontendbr, backend-br, react-brasil, qa-brasil
-Remotas sempre. Híbridas/presenciais só no Nordeste, a partir de DATA_NORDESTE.
+Remotas sempre. Híbridas/presenciais só no CE, RN, PB, PE e PI, a partir de DATA_NORDESTE.
 Só envia e-mail quando há vaga nova. Guarda as já vistas em vistas.json.
 Cada vaga nova recebe uma nota de compatibilidade dada por IA (ver ia.py).
 """
@@ -26,12 +26,13 @@ ARQ_RESUMO = "resumo.json"
 HORA_RESUMO = 21  # depois desta hora (Brasília) manda o resumo do dia por e-mail
 FUSO_BRASIL = timezone(timedelta(hours=-3))
 MAX_DIAS = 14  # vagas publicadas há até 14 dias
-# A partir desta data também entram vagas híbridas/presenciais no Nordeste
+# A partir desta data também entram vagas híbridas/presenciais nos estados aceitos
 DATA_NORDESTE = datetime(2026, 11, 5, tzinfo=timezone.utc)
-# Estados, capitais e siglas do Nordeste (para vagas híbridas/presenciais)
-NORDESTE_NOMES = re.compile(r"\b(nordeste|alagoas|bahia|ceara|maranhao|paraiba|pernambuco|piaui|rio grande do norte|"
-                            r"sergipe|maceio|salvador|fortaleza|sao luis|joao pessoa|recife|teresina|natal|aracaju)\b")
-NORDESTE_UF = {"al", "ba", "ce", "ma", "pb", "pe", "pi", "rn", "se"}
+# Estados aceitos para híbrido/presencial: Ceará, Rio Grande do Norte, Paraíba, Pernambuco e Piauí
+# (nomes, capitais e siglas). O resto do país só entra se for remoto.
+NORDESTE_NOMES = re.compile(r"\b(ceara|rio grande do norte|paraiba|pernambuco|piaui|"
+                            r"fortaleza|natal|joao pessoa|recife|teresina)\b")
+NORDESTE_UF = {"ce", "rn", "pb", "pe", "pi"}
 UA = {"User-Agent": "Mozilla/5.0 (robo-vagas-junior)"}
 
 REPOS_GITHUB = ["frontendbr/vagas", "backend-br/vagas", "react-brasil/vagas", "qa-brasil/vagas"]

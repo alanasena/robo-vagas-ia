@@ -22,7 +22,7 @@ flowchart LR
    - só as áreas que eu quero (desenvolvimento, QA, UX e dados); tira infra, cloud, segurança, suporte, iOS e áreas fora de TI
    - tira PJ, vagas exclusivas para PcD, vagas em espanhol e vagas com mais de 7 dias
    - tira quem exige inglês intermediário ou avançado, mas mantém quando o inglês é só diferencial
-   - remotas sempre; híbridas e presenciais só no Nordeste
+   - remotas sempre; híbridas e presenciais só no Ceará, Rio Grande do Norte, Paraíba, Pernambuco e Piauí
 3. **"Talvez"**: vagas que passam nos filtros, mas têm um ponto de dúvida (pede para morar em outra cidade, horário noturno, vaga em inglês, "qualidade" que pode não ser de software). Vão numa seção separada, com o motivo.
 4. **Limpeza**: remove repetidas (mesma empresa e mesmo título em sites diferentes) e confere se a vaga ainda está aberta, inclusive em Greenhouse, Lever e Ashby.
 5. **Avaliação com IA** (`ia.py` + `prompt.md`): o prompt traz meu perfil, 8 regras eliminatórias (CLT, remoto, júnior, inglês, turno etc.) e uma pontuação por área, tecnologias, básicos e bônus. O modelo devolve um JSON com formato fixo (*structured output*):
