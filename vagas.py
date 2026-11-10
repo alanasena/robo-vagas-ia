@@ -642,6 +642,12 @@ def bloco_ia(ia):
       </div>"""
 
 
+def destinatarios(user):
+    """EMAIL_DESTINO pode ter vários e-mails separados por vírgula. Sem ele, manda para o próprio Gmail."""
+    lista = [e.strip() for e in (os.environ.get("EMAIL_DESTINO") or "").split(",") if e.strip()]
+    return lista or [user]
+
+
 def bloco_eliminada(v):
     motivo = "; ".join(v["ia"].get("motivos_eliminacao") or []) or v["ia"].get("resumo", "")
     return (f"<li style='margin:4px 0'><a href=\"{html.escape(v['url'] or '#')}\">{html.escape(v['cargo'])}</a>"
@@ -660,8 +666,8 @@ def enviar(certas, talvez, eliminadas=()):
         assunto += f" — melhor nota {max(notas)}/10"
     msg["Subject"] = assunto
     msg["From"] = user
-    destino = os.environ.get("EMAIL_DESTINO") or user  # por padrão, manda para o próprio Gmail
-    msg["To"] = destino
+    destinos = destinatarios(user)
+    msg["To"] = ", ".join(destinos)
     corpo = "<div style='font-family:sans-serif;max-width:640px'>"
     if certas:
         corpo += "<h2>✅ Vagas para você</h2>" + "".join(bloco(v) for v in certas)
@@ -677,7 +683,7 @@ def enviar(certas, talvez, eliminadas=()):
     msg.attach(MIMEText(corpo, "html", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
         s.login(user, senha)
-        s.sendmail(user, [destino], msg.as_string())
+        s.sendmail(user, destinos, msg.as_string())
 
 
 def enviar_whatsapp(vagas, n_talvez=0):
@@ -767,14 +773,14 @@ def enviar_resumo(r, agora):
       <h3>Vagas lidas por fonte (maior número numa rodada)</h3><table>{fontes}</table>
       {alerta}</div>"""
     user = os.environ["GMAIL_USER"]
-    destino = os.environ.get("EMAIL_DESTINO") or user
+    destinos = destinatarios(user)
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"📊 Resumo do dia — robô de vagas ({fim:%d/%m}): {r['enviadas']} enviada(s)"
-    msg["From"], msg["To"] = user, destino
+    msg["From"], msg["To"] = user, ", ".join(destinos)
     msg.attach(MIMEText(corpo, "html", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
         s.login(user, os.environ["GMAIL_APP_PASSWORD"])
-        s.sendmail(user, [destino], msg.as_string())
+        s.sendmail(user, destinos, msg.as_string())
 
 
 def atualizar_resumo(agora, todas, certas, talvez, descartes):

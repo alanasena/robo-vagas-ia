@@ -52,7 +52,7 @@ Python 3.12 · Requests · Regex · Google Gemini API · GitHub Actions (cron) �
 3. Em **Settings → Secrets and variables → Actions**, crie:
    - `GEMINI_API_KEY`: chave do Gemini
    - `GMAIL_USER` e `GMAIL_APP_PASSWORD`: Gmail e [senha de app](https://myaccount.google.com/apppasswords)
-   - `EMAIL_DESTINO` (opcional): para onde mandar; o padrão é o próprio Gmail
+   - `EMAIL_DESTINO` (opcional): para onde mandar, um ou mais e-mails separados por vírgula; o padrão é o próprio Gmail
    - `WHATSAPP_NUMERO` e `CALLMEBOT_APIKEY` (opcionais): para receber no WhatsApp via [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/)
 4. Em **Actions**, rode o workflow uma vez no botão "Run workflow".
 
