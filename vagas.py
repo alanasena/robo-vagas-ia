@@ -54,7 +54,7 @@ AREAS_FORA = re.compile(r"(infraestrutura|\binfra\b|seguranca|governanca|cloud|s
 # Vagas em espanhol
 ESPANHOL_TITULO = re.compile(r"\b(soporte|datos|desarrollador\w*|ingenier[oa]|empleo)\b")
 # Áreas que não são tecnologia
-NAO_TECH = re.compile(r"(redes sociais|social media|\brh\b|recursos humanos|recrutamento|selecao|departamento pessoal|\bdp\b|people|talent|gente e gest|treinamento|comercial|vendas|vendedor|marketing|financeir|contabil|fiscal|juridic|advogad|administrativ|logistic|compras|faturamento|cobranca|telemarketing|atendente|recepc|secretari|enfermag|medic|farmac|laborat|producao|industrial)")
+NAO_TECH = re.compile(r"(manutencao|mecanic|eletromecanic|eletrotecnic|usinagem|\bcnc\b|\bpcp\b|torneiro|programador de producao|redes sociais|social media|\brh\b|recursos humanos|recrutamento|selecao|departamento pessoal|\bdp\b|people|talent|gente e gest|treinamento|comercial|vendas|vendedor|marketing|financeir|contabil|fiscal|juridic|advogad|administrativ|logistic|compras|faturamento|cobranca|telemarketing|atendente|recepc|secretari|enfermag|medic|farmac|laborat|producao|industrial)")
 # Precisa ter pelo menos uma destas no título
 AREA_DELA = re.compile(r"(desenvolvedor\w*|programador\w*|analista de sistemas|\bsistemas\b|\bdev\b|developer|software|front[- ]?end|\bfront\b|back[- ]?end|\bback\b|full[- ]?stack|\bqa\b|quality assurance|\btestes?\b|tester|qualidade|\bux\b|ui ?/ ?ux|\bdados\b|\bdata\b)")
 # "Qualidade" sozinha pode ser de fábrica/laboratório: vai para o Talvez
@@ -642,7 +642,13 @@ def bloco_ia(ia):
       </div>"""
 
 
-def enviar(certas, talvez):
+def bloco_eliminada(v):
+    motivo = "; ".join(v["ia"].get("motivos_eliminacao") or []) or v["ia"].get("resumo", "")
+    return (f"<li style='margin:4px 0'><a href=\"{html.escape(v['url'] or '#')}\">{html.escape(v['cargo'])}</a>"
+            f" — {html.escape(v['empresa'])}<br><span style='color:#666;font-size:13px'>{html.escape(motivo)}</span></li>")
+
+
+def enviar(certas, talvez, eliminadas=()):
     user = os.environ["GMAIL_USER"]
     senha = os.environ["GMAIL_APP_PASSWORD"]
     msg = MIMEMultipart("alternative")
@@ -663,6 +669,10 @@ def enviar(certas, talvez):
         corpo += ("<h2 style='margin-top:28px'>🤔 Talvez — confira antes de aplicar</h2>"
                   "<p style='color:#666'>Passaram nos filtros, mas tem algo que pode não servir.</p>"
                   + "".join(bloco(v, talvez=True) for v in talvez))
+    if eliminadas:
+        corpo += ("<details style='margin-top:28px'><summary style='color:#666;cursor:pointer'>"
+                  f"🗑️ {len(eliminadas)} vaga(s) que a IA eliminou (só pra você conferir)</summary>"
+                  "<ul>" + "".join(bloco_eliminada(v) for v in eliminadas) + "</ul></details>")
     corpo += "</div>"
     msg.attach(MIMEText(corpo, "html", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
@@ -838,8 +848,17 @@ def main():
     if certas or talvez:
         avaliar(certas + talvez)  # IA dá a nota (as "certas" têm prioridade na cota)
         certas, talvez = ordenar(certas), ordenar(talvez)
-        enviar(certas, talvez)
-        enviar_whatsapp(certas, len(talvez))
+        # vagas que a IA eliminou saem do topo do e-mail e do WhatsApp
+        elim = lambda v: bool(v.get("ia") and v["ia"].get("eliminada"))
+        eliminadas = [v for v in certas + talvez if elim(v)]
+        certas = [v for v in certas if not elim(v)]
+        talvez = [v for v in talvez if not elim(v)]
+        if eliminadas:
+            descartes["eliminada pela IA"] = len(eliminadas)
+            print(f"{len(eliminadas)} eliminada(s) pela IA")
+        if certas or talvez:  # só manda e-mail se sobrou alguma vaga boa
+            enviar(certas, talvez, eliminadas)
+            enviar_whatsapp(certas, len(talvez))
     json.dump(sorted(vistas), open(ARQ_VISTAS, "w"))
     atualizar_resumo(agora, todas, certas, talvez, descartes)
 
